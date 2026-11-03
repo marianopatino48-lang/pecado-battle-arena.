@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PECADO: BATTLE ARENA ONLINE</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101018;color:#fff;font-family:Arial,sans-serif;touch-action:none}canvas{display:block}
+#hud{position:fixed;inset:0;pointer-events:none}.panel{background:#11111ddd;border:1px solid #ffffff35;border-radius:12px;padding:9px 12px}
+#top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:7px;flex-wrap:wrap}
+#status{position:absolute;top:72px;left:50%;transform:translateX(-50%);white-space:nowrap}
+#menu{position:fixed;inset:0;background:linear-gradient(130deg,#090912ed,#241333f2);display:grid;place-items:center;padding:16px;z-index:5}
+#card{width:min(480px,100%);max-height:94vh;overflow:auto;background:#171725;border:1px solid #a78bfa77;border-radius:18px;padding:20px;box-shadow:0 20px 70px #000b}
+h1{font-size:27px;margin:0;color:#e1d4ff}h2{font-size:17px;margin:15px 0 7px}p,.muted{color:#c5c2d4;font-size:13px;line-height:1.4}
+input,select,button{font-size:15px;border-radius:9px;padding:10px;border:1px solid #8470b9;background:#29253b;color:#fff}
+input{width:100%;margin:5px 0}button{cursor:pointer}button.primary{background:#6946b5;width:100%;font-weight:bold;margin-top:8px}
+.row{display:flex;gap:7px}.row>*{flex:1;min-width:0}.list{max-height:105px;overflow:auto;font-size:13px;color:#ddd}.item{display:flex;justify-content:space-between;align-items:center;padding:5px;border-bottom:1px solid #ffffff18;gap:5px}
+.item button{font-size:12px;padding:6px}
+#stick{position:fixed;left:18px;bottom:20px;width:126px;height:126px;border-radius:50%;background:#ffffff20;border:2px solid #ffffff66;z-index:3;touch-action:none}
+#nub{position:absolute;left:36px;top:36px;width:50px;height:50px;border-radius:50%;background:#d9d9e9bb;border:2px solid white}
+.action{position:fixed;z-index:3;right:20px;border-radius:50%;width:70px;height:70px;background:#372b54dd;color:white;border:1px solid #fff9;font-weight:bold;touch-action:none}
+#shoot{bottom:28px;width:82px;height:82px;background:#8b2947dd}#jump{bottom:122px;right:34px}#reload{bottom:32px;right:116px;width:55px;height:55px}
+#chat{position:fixed;left:10px;bottom:155px;width:min(260px,58vw);z-index:3;pointer-events:auto}
+#chatlog{height:72px;overflow:auto;font-size:11px;text-shadow:0 1px 2px #000;background:#10101888;border-radius:7px;padding:5px}
+#chatrow{display:flex}#chatrow input{font-size:12px;padding:6px;margin:3px 0}#chatrow button{font-size:12px;padding:6px}
+#help{font-size:11px;color:#aaa}
+@media(min-width:800px){#stick{left:30px;bottom:25px}#chat{bottom:15px}}
+</style>
+</head>
+<body>
+<div id="hud">
+ <div id="top">
+  <div class="panel"><b id="who">INVITADO</b><br><small>VIDA: <span id="life">100</span> · BAJAS: <span id="kills">0</span></small></div>
+  <div class="panel">SALA: <b id="roomname">PÚBLICA</b><br><small>EN LÍNEA: <span id="online">1</span></small></div>
+ </div>
+ <div id="status" class="panel">Conectando...</div>
+</div>
+<div id="chat"><div id="chatlog"></div><div id="chatrow"><input id="chatinput" maxlength="120" placeholder="Mensaje..."><button id="sendchat">Enviar</button></div></div>
+<div id="stick"><div id="nub"></div></div>
+<button class="action" id="shoot">DISPARAR</button><button class="action" id="jump">SALTAR</button><button class="action" id="reload">↻</button>
+<div id="menu"><div id="card">
+ <h1>PECADO: BATTLE ARENA</h1><p>Prototipo multijugador online 3D. Entrá con un apodo y encontrá a tus amigos.</p>
+ <input id="nickname" maxlength="16" placeholder="Tu nombre de jugador">
+ <select id="character"><option>ADAM</option><option>EVA</option><option>PECADO</option><option>PECADOR</option><option>YOUTUBER</option></select>
+ <button class="primary" id="connect">ENTRAR AL JUEGO</button>
+ <h2>Amigos y solicitudes</h2><div id="players" class="list">Conectate para ver jugadores.</div>
+ <h2>Solicitudes recibidas</h2><div id="requests" class="list">Ninguna.</div>
+ <div class="row"><button id="createRoom">Crear sala privada</button><button id="quickRoom">Sala pública</button></div>
+ <h2>Invitaciones</h2><div id="invites" class="list">Ninguna.</div>
+ <p id="help">Controles: joystick táctil o WASD. Disparar apunta hacia delante. Para jugar con otras personas, el servidor debe estar publicado y ambos deben abrir la misma dirección.</p>
+</div></div>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+const socket=io();
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x28263c);scene.fog=new THREE.Fog(0x28263c,22,75);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,150);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;document.body.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xcac4ff,0x24202d,2));
+const sun=new THREE.DirectionalLight(0xffe5ce,2.4);sun.position.set(-10,18,8);sun.castShadow=true;scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x353247,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(100,50,0x8275a4,0x514a69);grid.position.y=.012;scene.add(grid);
+for(let i=0;i<18;i++){let b=new THREE.Mesh(new THREE.BoxGeometry(2+Math.random()*3,1.5+Math.random()*4,2+Math.random()*3),new THREE.MeshStandardMaterial({color:[0x454157,0x51465d,0x343448][i%3]}));b.position.set((Math.random()-.5)*45,b.geometry.parameters.height/2,(Math.random()-.5)*45);b.castShadow=true;b.receiveShadow=true;scene.add(b)}
+const colors={ADAM:0xc8b77d,EVA:0xb987c9,PECADO:0x9b304e,PECADOR:0x47405f,YOUTUBER:0xd79b45};
+function makeAvatar(name,character){let g=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:colors[character]||0xaaa});let body=new THREE.Mesh(new THREE.CapsuleGeometry(.42,.8,4,8),mat);body.position.y=1.05;body.castShadow=true;g.add(body);let head=new THREE.Mesh(new THREE.SphereGeometry(.29,12,10),new THREE.MeshStandardMaterial({color:0xd9b99c}));head.position.y=1.82;head.castShadow=true;g.add(head);let label=document.createElement('canvas');label.width=256;label.height=64;let x=label.getContext('2d');x.fillStyle='white';x.font='bold 27px Arial';x.textAlign='center';x.fillText(name.slice(0,16),128,42);let tex=new THREE.CanvasTexture(label),sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));sprite.position.y=2.5;sprite.scale.set(2.2,.55,1);g.add(sprite);return g}
+let myId=null,myName='',myCharacter='ADAM',me=null,others={},remoteState={},started=false,move={x:0,z:0},keys={},shots=[],lastShot=0,kills=0;
+function showStatus(s){document.getElementById('status').textContent=s;setTimeout(()=>{if(document.getElementById('status').textContent===s)document.getElementById('status').textContent=''},2600)}
+function enter(){myName=document.getElementById('nickname').value.trim().replace(/[<>]/g,'').slice(0,16);if(!myName){showStatus('Escribí un apodo primero');return}myCharacter=document.getElementById('character').value;socket.emit('join',{name:myName,character:myCharacter});}
+document.getElementById('connect').onclick=enter;
+socket.on('joined',d=>{myId=d.id;started=true;me=makeAvatar(myName,myCharacter);scene.add(me);me.position.set(0,0,0);document.getElementById('who').textContent=myName;document.getElementById('menu').style.display='none';showStatus('¡Conectado al servidor!');});
+socket.on('joinError',m=>showStatus(m));
+socket.on('players',list=>{document.getElementById('online').textContent=list.length;let box=document.getElementById('players');box.innerHTML='';list.filter(p=>p.id!==myId).forEach(p=>{let d=document.createElement('div');d.className='item';let span=document.createElement('span');span.textContent=p.name+' · '+p.character;let btn=document.createElement('button');btn.textContent='Agregar';btn.onclick=()=>socket.emit('friendRequest',p.id);d.append(span,btn);box.append(d);if(!others[p.id]){others[p.id]=makeAvatar(p.name,p.character);scene.add(others[p.id])}});for(let id of Object.keys(others)){if(!list.some(p=>p.id===id)){scene.remove(others[id]);delete others[id]}}});
+socket.on('positions',list=>{list.forEach(p=>{if(p.id!==myId&&others[p.id]){others[p.id].position.set(p.x,0,p.z);others[p.id].rotation.y=p.rot||0}})});
+socket.on('friendRequests',list=>{let box=document.getElementById('requests');box.innerHTML='';if(!list.length)box.textContent='Ninguna.';list.forEach(r=>{let d=document.createElement('div');d.className='item';let s=document.createElement('span');s.textContent=r.name;let b=document.createElement('button');b.textContent='Aceptar';b.onclick=()=>socket.emit('friendAccept',r.id);let no=document.createElement('button');no.textContent='Rechazar';no.onclick=()=>socket.emit('friendReject',r.id);d.append(s,b,no);box.append(d)})});
+socket.on('friendUpdate',m=>showStatus(m));
+socket.on('roomUpdate',r=>{document.getElementById('roomname').textContent=r.name;showStatus('Entraste a '+r.name)});
+socket.on('roomInvite',r=>{let box=document.getElementById('invites'),d=document.createElement('div');d.className='item';let s=document.createElement('span');s.textContent=r.from+' te invitó a '+r.name;let b=document.createElement('button');b.textContent='Unirme';b.onclick=()=>socket.emit('joinRoom',r.roomId);d.append(s,b);box.append(d)});
+document.getElementById('createRoom').onclick=()=>socket.emit('createRoom');
+document.getElementById('quickRoom').onclick=()=>socket.emit('joinRoom','public');
+socket.on('roomCreated',r=>{document.getElementById('roomname').textContent=r.name;showStatus('Sala privada creada');});
+socket.on('chat',m=>{let l=document.getElementById('chatlog'),d=document.createElement('div');d.textContent=m.name+': '+m.text;l.append(d);l.scrollTop=l.scrollHeight});
+document.getElementById('sendchat').onclick=()=>{let i=document.getElementById('chatinput'),v=i.value.trim();if(v){socket.emit('chat',v);i.value=''}};
+document.getElementById('chatinput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('sendchat').click()});
+socket.on('shot',p=>{let m=new THREE.Mesh(new THREE.SphereGeometry(.12,8,8),new THREE.MeshBasicMaterial({color:0xffd27a}));m.position.set(p.x,1.3,p.z);scene.add(m);setTimeout(()=>scene.remove(m),450)});
+socket.on('hit',d=>{if(d.id===myId){document.getElementById('life').textContent=d.hp;if(d.hp<=0)showStatus('Te eliminaron: reaparecés en unos segundos')}});
+document.getElementById('shoot').onclick=()=>{if(!started||Date.now()-lastShot<350)return;lastShot=Date.now();socket.emit('shoot')};
+document.getElementById('jump').onclick=()=>{if(me){me.position.y=.8;setTimeout(()=>{if(me)me.position.y=0},420)}};
+document.getElementById('reload').onclick=()=>showStatus('Munición recargada');
+let stick=document.getElementById('stick'),nub=document.getElementById('nub');
+function joyAt(e){let r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,m=Math.max(1,Math.hypot(dx,dy)),k=Math.min(1,48/m);move.x=dx/m*k;move.z=dy/m*k;nub.style.transform=`translate(${move.x*42}px,${move.z*42}px)`}
+stick.addEventListener('pointerdown',e=>{stick.setPointerCapture(e.pointerId);joyAt(e)});stick.addEventListener('pointermove',e=>{if(e.buttons)joyAt(e)});function stop(){move.x=move.z=0;nub.style.transform='translate(0,0)'}stick.addEventListener('pointerup',stop);stick.addEventListener('pointercancel',stop);
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+let last=performance.now(),sendAt=0;
+function loop(t){requestAnimationFrame(loop);let dt=Math.min((t-last)/1000,.05);last=t;
+ if(started&&me){let x=move.x+(keys.d?1:0)-(keys.a?1:0),z=move.z+(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(x,z)||1;x/=len;z/=len;me.position.x+=x*5*dt;me.position.z+=z*5*dt;me.position.x=Math.max(-45,Math.min(45,me.position.x));me.position.z=Math.max(-45,Math.min(45,me.position.z));if(Math.abs(x)+Math.abs(z)>.05)me.rotation.y=Math.atan2(x,z);camera.position.lerp(new THREE.Vector3(me.position.x,5.2,me.position.z-8),.12);camera.lookAt(me.position.x,1.1,me.position.z+2);if(t-sendAt>70){socket.emit('move',{x:me.position.x,z:me.position.z,rot:me.rotation.y});sendAt=t}}
+ renderer.render(scene,camera)}
+requestAnimationFrame(loop);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+</body></html>
